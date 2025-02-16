@@ -1,56 +1,74 @@
 require('dotenv').config();
 const ethers = require('ethers');
 
-// Konfigurasi Network Soneium
+// Network Configuration
 const provider = new ethers.JsonRpcProvider('https://rpc.soneium.org');
 
-// Alamat kontrak WETH di Soneium
+// WETH Contract Address
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
 
-// ABI WETH
+// WETH ABI
 const WETH_ABI = [
-  {
-    "inputs": [],
-    "name": "deposit",
-    "outputs": [],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "wad",
-        "type": "uint256"
-      }
-    ],
-    "name": "withdraw",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "balanceOf",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
+    {
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "wad",
+                "type": "uint256"
+            }
+        ],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "balanceOf",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
 ];
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const printHeader = () => {
+    console.log("\x1b[32m═════════════════════════════════════════════");
+    console.log("    Retrunvoid Soneium BOT - WETH Swap");
+    console.log("═════════════════════════════════════════════\x1b[0m");
+};
+
+const printWalletInfo = async (wallet, walletNumber, amount, loops, delaySeconds) => {
+    const ethBalance = await provider.getBalance(wallet.address);
+    const wethContract = new ethers.Contract(WETH_ADDRESS, WETH_ABI, provider);
+    const wethBalance = await wethContract.balanceOf(wallet.address);
+    
+    console.log(`\n\x1b[33m╔════ Wallet ${walletNumber} ════╗\x1b[0m`);
+    console.log("\x1b[36m[WALLET INFO]");
+    console.log(`Address    : ${wallet.address}`);
+    console.log(`Parameters : ${amount} ETH per swap, ${loops} loops, ${delaySeconds}s delay`);
+    console.log(`Balance    : ${ethers.formatEther(ethBalance)} ETH | ${ethers.formatEther(wethBalance)} WETH\x1b[0m`);
+};
 
 async function swapForWallet(walletNumber) {
     const privateKey = process.env[`PRIVATE_KEY_${walletNumber}`];
@@ -59,33 +77,25 @@ async function swapForWallet(walletNumber) {
     const delaySeconds = parseInt(process.env[`DELAY_${walletNumber}`]);
 
     if (!privateKey) {
-        throw new Error(`Configuration untuk wallet ${walletNumber} tidak ditemukan`);
+        throw new Error(`Configuration for wallet ${walletNumber} not found`);
     }
 
     const wallet = new ethers.Wallet(privateKey, provider);
     const wethContract = new ethers.Contract(WETH_ADDRESS, WETH_ABI, wallet);
-    
-    console.log(`\n=== BOT TX SWAP ETH - WETH + WETH - ETH ===`);
-    console.log(`\n=== Wallet ${walletNumber} (${wallet.address}) Started ===`);
-    console.log(`Amount: ${amount} ETH, Loops: ${loops}, Delay: ${delaySeconds}s`);
-    console.log(`\n=== Pembuat : Retrunvoid ===`);
-    console.log(`\n=== Github : https://github.com/retrunv0id ===`);
 
+    await printWalletInfo(wallet, walletNumber, amount, loops, delaySeconds);
 
     try {
         for(let i = 1; i <= loops; i++) {
-            console.log(`\n[Wallet ${walletNumber}] Loop ${i}/${loops}`);
+            console.log(`\n\x1b[33m[LOOP ${i}/${loops}]\x1b[0m`);
             
-            // Check balances
+            // Check balances before swap
             const ethBalance = await provider.getBalance(wallet.address);
             const wethBalance = await wethContract.balanceOf(wallet.address);
-            
-            console.log(`[Wallet ${walletNumber}] Balances:`);
-            console.log(`ETH: ${ethers.formatEther(ethBalance)}`);
-            console.log(`WETH: ${ethers.formatEther(wethBalance)}`);
+            console.log(`\x1b[34m[BALANCE] ETH: ${ethers.formatEther(ethBalance)} | WETH: ${ethers.formatEther(wethBalance)}\x1b[0m`);
             
             // ETH to WETH
-            console.log(`\n[Wallet ${walletNumber}] ETH → WETH`);
+            console.log(`\x1b[32m[SWAP] Depositing ${amount} ETH → WETH...\x1b[0m`);
             const amountIn = ethers.parseEther(amount.toString());
             const gasPrice = await provider.getFeeData();
             
@@ -94,35 +104,43 @@ async function swapForWallet(walletNumber) {
                 gasPrice: gasPrice.gasPrice
             });
             
-            console.log(`[Wallet ${walletNumber}] TX Hash: ${tx1.hash}`);
+            console.log(`\x1b[32m[TX] ${tx1.hash}\x1b[0m`);
             await tx1.wait();
             
             await sleep(delaySeconds * 1000);
             
+            // Get current WETH balance for full withdrawal
+            const currentWethBalance = await wethContract.balanceOf(wallet.address);
+            
             // WETH to ETH
-            console.log(`\n[Wallet ${walletNumber}] WETH → ETH`);
-            const tx2 = await wethContract.withdraw(amountIn, {
+            console.log(`\x1b[32m[SWAP] Withdrawing ${ethers.formatEther(currentWethBalance)} WETH → ETH...\x1b[0m`);
+            const tx2 = await wethContract.withdraw(currentWethBalance, {
                 gasPrice: gasPrice.gasPrice
             });
             
-            console.log(`[Wallet ${walletNumber}] TX Hash: ${tx2.hash}`);
+            console.log(`\x1b[32m[TX] ${tx2.hash}\x1b[0m`);
             await tx2.wait();
             
+            // Final balance check
+            const finalEthBalance = await provider.getBalance(wallet.address);
+            console.log(`\x1b[34m[FINAL] ETH Balance: ${ethers.formatEther(finalEthBalance)}\x1b[0m`);
+            
             if(i < loops) {
-                console.log(`\n[Wallet ${walletNumber}] Waiting ${delaySeconds}s before next loop...`);
+                console.log(`\x1b[36m[DELAY] Waiting ${delaySeconds}s before next loop...\x1b[0m`);
                 await sleep(delaySeconds * 1000);
             }
         }
         
-        console.log(`\n=== Wallet ${walletNumber} Completed ===`);
+        console.log(`\x1b[32m[SUCCESS] Wallet ${walletNumber} operations completed!\x1b[0m`);
     } catch (error) {
-        console.error(`\n[Wallet ${walletNumber}] Error:`, error);
+        console.error(`\x1b[31m[ERROR] Wallet ${walletNumber}:`, error.message, '\x1b[0m');
     }
 }
 
 async function startMultiWalletSwaps() {
     try {
-        // Mendeteksi jumlah wallet dari .env
+        printHeader();
+        
         const wallets = [];
         let walletNum = 1;
         
@@ -131,18 +149,16 @@ async function startMultiWalletSwaps() {
             walletNum++;
         }
         
-        console.log(`Starting swaps for ${wallets.length} wallets...`);
+        console.log(`\x1b[36m[INFO] Starting operations for ${wallets.length} wallets...\x1b[0m`);
         
-        // Menjalankan semua wallet secara parallel
         await Promise.all(
             wallets.map(walletNum => swapForWallet(walletNum))
         );
         
-        console.log('\nAll wallet operations completed!');
+        console.log('\n\x1b[32m[SUCCESS] All wallet operations completed!\x1b[0m');
     } catch (error) {
-        console.error('Fatal error:', error);
+        console.error('\x1b[31m[FATAL ERROR]:', error.message, '\x1b[0m');
     }
 }
 
-// Jalankan script
 startMultiWalletSwaps();
